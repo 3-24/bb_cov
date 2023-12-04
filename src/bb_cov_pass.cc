@@ -1,4 +1,3 @@
-
 #include "bb_cov_pass.hpp"
 
 BB_COV_Pass::BB_COV_Pass() : llvm::ModulePass(BB_COV_Pass::ID) {}
@@ -25,8 +24,8 @@ bool BB_COV_Pass::runOnModule(llvm::Module &M) {
   llvm::Type *int8PtrTy = llvm::Type::getInt8PtrTy(Ctx);
   llvm::Type *int32PtrTy = llvm::Type::getInt32PtrTy(Ctx);
 
-  record_bb = M.getOrInsertFunction("__record_bb_cov", voidTy, int8PtrTy,
-                                    int8PtrTy, int8PtrTy);
+  record_bb_cov = M.getOrInsertFunction("__record_bb_cov", voidTy, int8PtrTy,
+                                        int8PtrTy, int32Ty);
 
   cov_fini = M.getOrInsertFunction("__cov_fini", voidTy);
 
@@ -37,19 +36,18 @@ bool BB_COV_Pass::runOnModule(llvm::Module &M) {
     const string func_name = llvm::demangle(mangled_func_name);
     // const string func_name = mangled_func_name;
 
+
     if (F.isIntrinsic()) {
       continue;
     }
 
-    if (func_name.find("_GLOBAL__sub_I_") != string::npos) {
-      continue;
-    }
-
-    if (func_name.find("__cxx_global_var_init") != string::npos) {
+    if (func_name.find("_GLOBAL__sub_I_") != string::npos ||
+        func_name.find("__cxx_global_var_init") != string::npos) {
       continue;
     }
 
     if (func_name == "main") {
+      // Get all return instructions in main function
       set<llvm::ReturnInst *> ret_inst_set;
       for (auto &BB : F) {
         for (auto &I : BB) {
@@ -60,12 +58,13 @@ bool BB_COV_Pass::runOnModule(llvm::Module &M) {
         }
       }
 
+      // Insert cov_fini before each return instruction
       for (auto ret_inst : ret_inst_set) {
         IRB->SetInsertPoint(ret_inst);
         IRB->CreateCall(cov_fini, {});
       }
     }
-
+    
     auto subp = F.getSubprogram();
     if (subp == NULL) {
       continue;
@@ -78,28 +77,21 @@ bool BB_COV_Pass::runOnModule(llvm::Module &M) {
       filename = dirname + "/" + filename;
     }
 
-    // llvm::errs() << "Instrumenting " << func_name << " in " << filename <<
-    // "\n";
-
     if (filename.find("/usr/bin") != string::npos) {
       continue;
     }
 
-    // normal functions under test
     instrument_bb_cov(&F, filename, func_name);
   }
 
-  for (auto iter : file_bb_map) {
-    string filename = iter.first;
+  // Create empty .cov template files (overwrite)
+  for (auto [filename, file_coverage_map] : file_bb_map) {
+    ofstream cov_file(filename + ".cov");
 
-    string cov_filename = filename + ".cov";
-    ofstream cov_file(cov_filename);
-
-    for (auto iter2 : iter.second) {
-      const set<string> &bb_set = iter2.second;
-      cov_file << "F " << iter2.first << " " << false << "\n";
-      for (auto &bb_name : bb_set) {
-        cov_file << "b " << bb_name << " " << false << "\n";
+    for (auto [func, bb_capacity] : file_coverage_map) {
+      cov_file << "F " << func << " " << false << "\n";
+      for (size_t i = 0; i < bb_capacity; i++) {
+        cov_file << "b " << i << " " << false << "\n";
       }
     }
 
@@ -138,11 +130,12 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function *F, const string &filename,
   llvm::Constant *func_name_const =
       gen_new_string_constant(func_name, IRB, Mod);
 
-  set<string> &cur_bb_set = file_bb_map[filename][func_name];
+  size_t &bb_capacity = file_bb_map[filename][func_name];
 
   llvm::errs() << "Instrumenting " << func_name << " in " << filename << "\n";
 
-  int bb_index = 0;
+  // For each basic block, insert record_bb_cov to notify that the basic block
+  // is reached
   for (auto &BB : F->getBasicBlockList()) {
     llvm::Instruction *first_inst = BB.getFirstNonPHIOrDbgOrLifetime();
     if (first_inst == NULL) {
@@ -153,18 +146,16 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function *F, const string &filename,
       continue;
     }
 
-    // string BB_name = BB.getName().str();
-    string BB_name = func_name + "_" + to_string(bb_index++);
-
-    cur_bb_set.insert(BB_name);
+    // Get unsigned 32bit integer LLVM constant
+    llvm::Constant *bb_index_const = llvm::ConstantInt::get(
+        llvm::Type::getInt32Ty(Mod->getContext()), bb_capacity++);
 
     IRB->SetInsertPoint(first_inst);
-    llvm::Constant *bb_name_const = gen_new_string_constant(BB_name, IRB, Mod);
-    IRB->CreateCall(record_bb,
-                    {filename_const, func_name_const, bb_name_const});
+    IRB->CreateCall(record_bb_cov,
+                    {filename_const, func_name_const, bb_index_const});
   }
 
-  // Insert cov fini
+  // Insert cov fini before each exit call
   for (auto &BB : F->getBasicBlockList()) {
     for (auto &IN : BB) {
       if (!llvm::isa<llvm::CallInst>(IN)) {

@@ -53,13 +53,13 @@ class BB_COV_Pass : public llvm::ModulePass {
   bool instrument_module();
 
   llvm::Module *Mod;
-  llvm::FunctionCallee record_bb;
+  llvm::FunctionCallee record_bb_cov;
   llvm::FunctionCallee cov_fini;
 
   vector<llvm::Function *> func_list;
 
-  // To measure coverage
-  map<string, map<string, set<string>>> file_bb_map;
+  // File name -> function name -> # of basic blocks
+  map<string, map<string, size_t>> file_bb_map;
 
   void instrument_bb_cov(llvm::Function *, const string &, const string &);
 

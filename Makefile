@@ -9,14 +9,14 @@ $(info Detected LLVM VERSION : $(LLVMVER))
 
 CC=clang
 CXX=clang++
-CFLAGS=`llvm-config --cflags` -fPIC -O2
+CFLAGS=`llvm-config --cflags` -fPIC -O2 -Wno-c++17-extensions
 AR=ar
 
 DEBUG ?= 1
 ifeq ($(DEBUG), 1)
-	CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0 -DDEBUG
+	CXXFLAGS=`llvm-config --cxxflags` -fPIC -ggdb -O0 -DDEBUG -Wno-c++17-extensions
 else
-	CXXFLAGS=`llvm-config --cxxflags` -fPIC -g -O2
+	CXXFLAGS=`llvm-config --cxxflags` -fPIC -g -O2 -Wno-c++17-extensions
 endif
 
 SMALL ?= 0
