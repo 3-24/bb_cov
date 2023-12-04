@@ -70,12 +70,15 @@ void __cov_fini() {
         bool is_func = line.substr(0, first_empty) == "F";
 
         if (is_func) {
-          string name =
+          string middle =
               line.substr(first_empty + 1, last_empty - first_empty - 1);
-          if (file_info.find(name) == file_info.end()) {
-            file_info.insert(make_pair(name, vector<bool>()));
+          size_t middle_empty = middle.find_last_of(" ");
+          size_t capacity = stoul(middle.substr(middle_empty + 1));
+          cur_func = middle.substr(0, middle_empty);
+
+          if (file_info.find(cur_func) == file_info.end()) {
+            file_info.insert(make_pair(cur_func, vector<bool>(capacity, false)));
           }
-          cur_func = name;
         } else {
           string index_str =
               line.substr(first_empty + 1, last_empty - first_empty - 1);
@@ -105,10 +108,10 @@ void __cov_fini() {
         }
       }
 
-      cov_file_out << "F " << func_name << " " << is_func_covered << "\n";
+      cov_file_out << "F " << func_name << ' ' << func_bb_cov.size() << ' ' << is_func_covered << "\n";
 
       for (size_t bb_index = 0; bb_index < func_bb_cov.size(); bb_index++) {
-        cov_file_out << "B " << bb_index << " " << func_bb_cov[bb_index]
+        cov_file_out << "b " << bb_index << ' ' << func_bb_cov[bb_index]
                      << "\n";
       }
     }

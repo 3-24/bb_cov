@@ -89,7 +89,7 @@ bool BB_COV_Pass::runOnModule(llvm::Module &M) {
     ofstream cov_file(filename + ".cov");
 
     for (auto [func, bb_capacity] : file_coverage_map) {
-      cov_file << "F " << func << " " << false << "\n";
+      cov_file << "F " << func << " " << bb_capacity << " " << false << "\n";
       for (size_t i = 0; i < bb_capacity; i++) {
         cov_file << "b " << i << " " << false << "\n";
       }
